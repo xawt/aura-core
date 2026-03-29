@@ -1,6 +1,7 @@
 # Web search tool using DuckDuckGo (via the ddgs library).
 # Exposes a single function `web_search` that returns formatted results
 # as a plain string, suitable for passing back to an LLM as tool output.
+from datetime import date
 from ddgs import DDGS
 
 
@@ -25,6 +26,8 @@ SCHEMA = {
 def web_search(query: str) -> str:
     # Query DuckDuckGo and collect up to 5 results.
     try:
+        date_string = date.today().strftime("%Y-%m-%d")
+        query = query + f" as of {date_string}"
         with DDGS() as ddgs:
             results = list(ddgs.text(query, max_results=5))
     except Exception as e:

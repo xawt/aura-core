@@ -18,8 +18,10 @@ class LLMClient:
     def complete(
         self, messages: list[dict], tools: list[dict] | None = None
     ) -> dict:
+
         response = self.client.chat.completions.create(
             model=self.model,
             messages=messages,
+            tools=tools
         )
         return response.choices[0].message
