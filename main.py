@@ -3,6 +3,7 @@ from tools.registry import ToolRegistry, Tool
 import tools.builtin.web_search
 from interfaces.cli.interface import CLIInterface
 
+
 def main():
     tool_registry = ToolRegistry()
 

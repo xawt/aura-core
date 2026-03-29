@@ -2,6 +2,7 @@ from agent.agent import Agent
 from interfaces.cli.handler import CLIHandler
 import os
 
+
 class CLIInterface:
     def __init__(self, agent: Agent):
         self.agent = agent
@@ -20,7 +21,7 @@ class CLIInterface:
                 if not user_input.strip():
                     continue
 
-                # Check for commands (e.g., /help, /reset) before passing to the agent
+                # Handle slash commands before passing to agent
                 if user_input.startswith("/"):
                     self._handle_command(user_input)
                     continue
@@ -29,15 +30,15 @@ class CLIInterface:
                 print("")
                 self.agent.run(user_input)
 
-            except KeyboardInterrupt: # Handle Ctrl+C to stop the agent
+            except KeyboardInterrupt:  # Handle Ctrl+C to stop the agent
                 print("\nBye!")
                 break
-    
+
     # Handle CLI commands like /help, /reset, etc.
     def _handle_command(self, command: str) -> None:
         match command.strip():
             case "/help":
-                    print("""
+                print("""
 ╭─────────────────────────────────╮
 │           AURA-Core             │
 ├─────────────────────────────────┤
@@ -61,6 +62,6 @@ class CLIInterface:
 
             case "/exit":
                 raise KeyboardInterrupt
-            
+
             case _:
                 print(f"Unknown command: {command}")

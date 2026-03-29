@@ -1,4 +1,6 @@
-from agent.events import Event, ToolCallEvent, ObservationEvent, FinalAnswerEvent, ErrorEvent
+from agent.events import (
+    Event, ToolCallEvent, ObservationEvent, FinalAnswerEvent, ErrorEvent
+)
 
 
 class CLIHandler:
