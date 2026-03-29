@@ -32,7 +32,10 @@ class Agent:
                 tools=self.tool_registry.get_all_schemas()
             )
             if message.tool_calls:
-                self.context.add_message(message)
+                # 1. Store the tool call message in the context
+                self.context.add_tool_request(message)
+
+                # 2. For each tool call, execute the tool and store the result
                 for tool_call in message.tool_calls:
                     name = tool_call.function.name
                     args = json.loads(tool_call.function.arguments)
