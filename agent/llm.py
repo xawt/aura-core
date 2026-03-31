@@ -1,6 +1,7 @@
 import os
 from openai import OpenAI
 from dotenv import load_dotenv
+from agent.config import load_config
 
 load_dotenv()
 
@@ -8,12 +9,15 @@ DEFAULT_MODEL = "google/gemini-2.0-flash-001"
 
 
 class LLMClient:
-    def __init__(self, model: str = DEFAULT_MODEL):
+    def __init__(self, model: str = None):
+        config = load_config('config/default.yaml')
+        print(f"Config loaded: {config}")
+        self.model = model or config.get("model", DEFAULT_MODEL)
+        print(f"Using LLM model: {self.model}")
         self.client = OpenAI(
             base_url="https://openrouter.ai/api/v1",
             api_key=os.environ["OPENROUTER_API_KEY"],
         )
-        self.model = model
 
     def complete(
         self, messages: list[dict], tools: list[dict] | None = None
