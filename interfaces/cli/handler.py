@@ -25,7 +25,7 @@ class CLIHandler:
         if renderable is not None:
             self._write(renderable)
 
-    def _build(self, event: Event):
+    def _build(self, event: Event) -> "Text | Panel | None":
         match event:
             case ToolCallEvent():
                 args_str = ", ".join(

@@ -45,9 +45,8 @@ Input:focus {
 
 
 class AURAHeader(Static):
-    def __init__(self, model: str) -> None:
+    def __init__(self) -> None:
         super().__init__("", id="header")
-        self._model = model
 
     def on_mount(self) -> None:
         self._redraw()
@@ -57,20 +56,25 @@ class AURAHeader(Static):
 
     def _redraw(self) -> None:
         sd = self._stardate()
-        # Fixed segments before the right fill
-        prefix = "█████ L-CLI ████████████ "
-        middle = "AURA-CORE COMPUTER INTERFACE "
-        suffix = f"████████████ SD {sd} "
-        fixed_len = len(prefix) + len(middle) + len(suffix)
+        seg_red = "█████ "
+        seg_lcli = "L-CLI "
+        seg_ora = "████████████ "
+        seg_title = "AURA-CORE COMPUTER INTERFACE "
+        seg_blue = "████████████ "
+        seg_sd = f"SD {sd} "
+        fixed_len = sum(len(s) for s in [
+            seg_red, seg_lcli, seg_ora,
+            seg_title, seg_blue, seg_sd,
+        ])
         fill = max(1, self.size.width - fixed_len) * "█"
 
         bar = Text()
-        bar.append("█████ ", style="bold color(167)")
-        bar.append("L-CLI ", style=f"bold {_ORANGE}")
-        bar.append("████████████ ", style=f"bold {_ORANGE}")
-        bar.append(middle, style=f"bold {_TAN}")
-        bar.append("████████████ ", style=f"bold {_BLUE}")
-        bar.append(f"SD {sd} ", style=f"bold {_BLUE}")
+        bar.append(seg_red, style="bold color(167)")
+        bar.append(seg_lcli, style=f"bold {_ORANGE}")
+        bar.append(seg_ora, style=f"bold {_ORANGE}")
+        bar.append(seg_title, style=f"bold {_TAN}")
+        bar.append(seg_blue, style=f"bold {_BLUE}")
+        bar.append(seg_sd, style=f"bold {_BLUE}")
         bar.append(fill, style="bold color(183)")
         self.update(bar)
 
@@ -92,7 +96,7 @@ class CLIInterface(App):
         self.agent.subscribe(self.handler.handle)
 
     def compose(self) -> ComposeResult:
-        yield AURAHeader(self.agent.llm.model)
+        yield AURAHeader()
         yield RichLog(id="output", highlight=True, markup=False)
         yield Input(
             placeholder="QUERY ▶  type /help for commands",
