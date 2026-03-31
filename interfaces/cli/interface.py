@@ -1,80 +1,78 @@
-import os
+import threading
 from datetime import date
 
-from rich.console import Console
+from textual.app import App, ComposeResult
+from textual.widgets import Input, RichLog, Static
+
+from rich.rule import Rule
 from rich.text import Text
 
 from agent.agent import Agent
 from interfaces.cli.handler import CLIHandler
 
-# LCARS colour palette
+# AURA colour palette
 _ORANGE = "color(214)"
 _BLUE = "color(111)"
 _RED = "color(167)"
-_PURPLE = "color(183)"
 _TAN = "color(223)"
 
-console = Console()
+_CSS = """
+Screen {
+    background: #0a0a0a;
+}
+#header {
+    height: 2;
+    dock: top;
+    border-bottom: solid #ffaf00;
+}
+#output {
+    background: #0a0a0a;
+    border: none;
+    padding: 0 1;
+    scrollbar-color: #ffaf00;
+}
+#input {
+    dock: bottom;
+    border: solid #ffaf00;
+    background: #111111;
+    color: #ffd7af;
+    height: 3;
+}
+Input:focus {
+    border: solid #ffaf00;
+}
+"""
 
 
-class CLIInterface:
-    def __init__(self, agent: Agent):
-        self.agent = agent
-        self.handler = CLIHandler()
-        self.agent.subscribe(self.handler.handle)
+class AURAHeader(Static):
+    def __init__(self, model: str) -> None:
+        super().__init__("", id="header")
+        self._model = model
 
-    def run(self) -> None:
-        self._print_header()
+    def on_mount(self) -> None:
+        self._redraw()
 
-        while True:
-            try:
-                console.print()
-                user_input = console.input(
-                    f"[bold {_ORANGE}] QUERY ▶ [/bold {_ORANGE}] "
-                )
+    def on_resize(self) -> None:
+        self._redraw()
 
-                if not user_input.strip():
-                    continue
+    def _redraw(self) -> None:
+        sd = self._stardate()
+        # Fixed segments before the right fill
+        prefix = "█████ L-CLI ████████████ "
+        middle = "AURA-CORE COMPUTER INTERFACE "
+        suffix = f"████████████ SD {sd} "
+        fixed_len = len(prefix) + len(middle) + len(suffix)
+        fill = max(1, self.size.width - fixed_len) * "█"
 
-                if user_input.startswith("/"):
-                    self._handle_command(user_input)
-                    continue
-
-                console.print()
-                self.agent.run(user_input)
-
-            except KeyboardInterrupt:
-                console.print()
-                console.rule(
-                    f"[bold {_ORANGE}]LCARS INTERFACE TERMINATED"
-                    f"[/bold {_ORANGE}]",
-                    style=_ORANGE,
-                )
-                console.print()
-                break
-
-    def _print_header(self) -> None:
-        console.print()
         bar = Text()
-        bar.append("█████ ", style=f"bold {_RED}")
-        bar.append("LCARS ", style=f"bold {_ORANGE}")
+        bar.append("█████ ", style="bold color(167)")
+        bar.append("L-CLI ", style=f"bold {_ORANGE}")
         bar.append("████████████ ", style=f"bold {_ORANGE}")
-        bar.append("AURA-CORE COMPUTER INTERFACE ", style=f"bold {_TAN}")
+        bar.append(middle, style=f"bold {_TAN}")
         bar.append("████████████ ", style=f"bold {_BLUE}")
-        bar.append(f"SD {self._stardate()} ", style=f"bold {_BLUE}")
-        bar.append("█████", style=f"bold {_PURPLE}")
-        console.print(bar)
-        console.rule(style=_ORANGE)
-
-        sub = Text()
-        sub.append("  SYSTEM ONLINE ", style=_ORANGE)
-        sub.append("▶ ", style=f"dim {_ORANGE}")
-        sub.append(f"MODEL: {self.agent.llm.model}  ", style=f"dim {_TAN}")
-        sub.append("▶ ", style=f"dim {_ORANGE}")
-        sub.append("TYPE /HELP FOR COMMANDS", style=f"dim {_TAN}")
-        console.print(sub)
-        console.rule(style=_ORANGE)
-        console.print()
+        bar.append(f"SD {sd} ", style=f"bold {_BLUE}")
+        bar.append(fill, style="bold color(183)")
+        self.update(bar)
 
     @staticmethod
     def _stardate() -> str:
@@ -83,10 +81,74 @@ class CLIInterface:
         sd = (d.year - 1987) * 1000.0 + (yday / 365.25) * 1000
         return f"{sd:.1f}"
 
+
+class CLIInterface(App):
+    CSS = _CSS
+
+    def __init__(self, agent: Agent) -> None:
+        super().__init__()
+        self.agent = agent
+        self.handler = CLIHandler(self._write_from_thread)
+        self.agent.subscribe(self.handler.handle)
+
+    def compose(self) -> ComposeResult:
+        yield AURAHeader(self.agent.llm.model)
+        yield RichLog(id="output", highlight=True, markup=False)
+        yield Input(
+            placeholder="QUERY ▶  type /help for commands",
+            id="input",
+        )
+
+    def on_mount(self) -> None:
+        self.query_one("#input", Input).focus()
+        log = self.query_one("#output", RichLog)
+        sub = Text()
+        sub.append("  SYSTEM ONLINE ", style=_ORANGE)
+        sub.append("▶ ", style=f"dim {_ORANGE}")
+        sub.append(
+            f"MODEL: {self.agent.llm.model}",
+            style=f"dim {_TAN}",
+        )
+        log.write(sub)
+        log.write(Text(""))
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        user_input = event.value.strip()
+        self.query_one("#input", Input).clear()
+
+        if not user_input:
+            return
+
+        log = self.query_one("#output", RichLog)
+        echo = Text()
+        echo.append(" QUERY      ", style=f"bold {_ORANGE}")
+        echo.append("▶ ", style=_ORANGE)
+        echo.append(user_input, style=_TAN)
+        log.write(echo)
+
+        if user_input.startswith("/"):
+            self._handle_command(user_input)
+            return
+
+        threading.Thread(
+            target=self.agent.run,
+            args=(user_input,),
+            daemon=True,
+        ).start()
+
+    def _write_from_thread(self, renderable) -> None:
+        log = self.query_one("#output", RichLog)
+        self.call_from_thread(log.write, renderable)
+
     def _handle_command(self, command: str) -> None:
-        match command.strip():
+        log = self.query_one("#output", RichLog)
+        parts = command.strip().split(maxsplit=1)
+        cmd = parts[0]
+        arg = parts[1] if len(parts) > 1 else ""
+
+        match cmd:
             case "/help":
-                self._print_help()
+                self._print_help(log)
 
             case "/reset":
                 self.agent.context.clear_messages()
@@ -94,68 +156,64 @@ class CLIInterface:
                 row.append(" MEMORY CORE ", style=f"bold {_ORANGE}")
                 row.append("▶ ", style=_ORANGE)
                 row.append("CONTEXT PURGED", style=_TAN)
-                console.print(row)
+                log.write(row)
 
             case "/clear":
-                os.system('cls' if os.name == 'nt' else 'clear')
+                log.clear()
 
             case "/model":
-                row = Text()
-                row.append(" ACTIVE MATRIX ", style=f"bold {_BLUE}")
-                row.append("▶ ", style=_BLUE)
-                row.append(self.agent.llm.model, style=f"bold {_ORANGE}")
-                console.print(row)
-                new_model = console.input(
-                    f"[{_BLUE}] NEW MATRIX ID ▶[/{_BLUE}]  "
-                ).strip()
-                if new_model:
-                    self.agent.llm.model = new_model
-                    updated = Text()
-                    updated.append(" MATRIX UPDATED ", style=f"bold {_ORANGE}")
-                    updated.append("▶ ", style=_ORANGE)
-                    updated.append(self.agent.llm.model, style=_TAN)
-                    console.print(updated)
+                if arg:
+                    self.agent.llm.model = arg
+                    row = Text()
+                    row.append(
+                        " MATRIX UPDATED ",
+                        style=f"bold {_ORANGE}",
+                    )
+                    row.append("▶ ", style=_ORANGE)
+                    row.append(self.agent.llm.model, style=_TAN)
+                    log.write(row)
+                else:
+                    row = Text()
+                    row.append(
+                        " ACTIVE MATRIX  ",
+                        style=f"bold {_BLUE}",
+                    )
+                    row.append("▶ ", style=_BLUE)
+                    row.append(
+                        self.agent.llm.model,
+                        style=f"bold {_ORANGE}",
+                    )
+                    log.write(row)
 
             case "/exit":
-                raise KeyboardInterrupt
+                self.exit()
 
             case _:
                 row = Text()
                 row.append(" UNKNOWN CMD   ", style=f"bold {_RED}")
                 row.append("▶ ", style=_RED)
                 row.append(command, style=_TAN)
-                console.print(row)
+                log.write(row)
 
-    def _print_help(self) -> None:
-        console.print()
-        title = (
-            f"[bold {_ORANGE}]LCARS COMMAND DIRECTORY"
-            f"[/bold {_ORANGE}]"
-        )
-        console.rule(title, style=_ORANGE)
-        console.print()
-
-        console.print(Text("  COMMANDS", style=f"bold {_ORANGE}"))
+    def _print_help(self, log: RichLog) -> None:
+        log.write(Rule(style=_ORANGE))
+        log.write(Text("  COMMANDS", style=f"bold {_ORANGE}"))
         for cmd, desc in [
-            ("/help",  "display command directory"),
-            ("/model", "view or change active matrix"),
+            ("/help", "display command directory"),
+            ("/model <name>", "view or change active matrix"),
             ("/reset", "purge memory core"),
             ("/clear", "clear display"),
-            ("/exit",  "terminate interface"),
+            ("/exit", "terminate interface"),
         ]:
-            row = Text(f"  {cmd:<12}", style=f"bold {_BLUE}")
+            row = Text(f"  {cmd:<20}", style=f"bold {_BLUE}")
             row.append(f"  {desc}", style=f"dim {_TAN}")
-            console.print(row)
-
-        console.print()
-        console.print(Text("  SUBROUTINES", style=f"bold {_ORANGE}"))
+            log.write(row)
+        log.write(Text(""))
+        log.write(Text("  SUBROUTINES", style=f"bold {_ORANGE}"))
         for tool, desc in [
             ("web_search", "query the federation database network"),
         ]:
-            row = Text(f"  {tool:<14}", style=f"bold {_BLUE}")
+            row = Text(f"  {tool:<20}", style=f"bold {_BLUE}")
             row.append(f"  {desc}", style=f"dim {_TAN}")
-            console.print(row)
-
-        console.print()
-        console.rule(style=_ORANGE)
-        console.print()
+            log.write(row)
+        log.write(Rule(style=_ORANGE))
