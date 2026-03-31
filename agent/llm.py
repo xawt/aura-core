@@ -9,7 +9,7 @@ DEFAULT_MODEL = "google/gemini-2.0-flash-001"
 
 
 class LLMClient:
-    def __init__(self, model: str = None):
+    def __init__(self, model: str | None = None):
         config = load_config('config/default.yaml')
         print(f"Config loaded: {config}")
         self.model = model or config.get("model", DEFAULT_MODEL)
