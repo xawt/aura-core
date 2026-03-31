@@ -1,77 +1,223 @@
+import threading
+from datetime import date
+
+from textual.app import App, ComposeResult
+from textual.widgets import Input, RichLog, Static
+
+from rich.rule import Rule
+from rich.text import Text
+
 from agent.agent import Agent
 from interfaces.cli.handler import CLIHandler
-import os
+
+# AURA colour palette
+_ORANGE = "color(214)"
+_BLUE = "color(111)"
+_RED = "color(167)"
+_TAN = "color(223)"
+
+_CSS = """
+Screen {
+    background: #0a0a0a;
+}
+#header {
+    height: 2;
+    dock: top;
+    border-bottom: solid #ffaf00;
+}
+#output {
+    background: #0a0a0a;
+    border: none;
+    padding: 0 1;
+    scrollbar-color: #ffaf00;
+}
+#input {
+    dock: bottom;
+    border: solid #ffaf00;
+    background: #111111;
+    color: #ffd7af;
+    height: 3;
+}
+Input:focus {
+    border: solid #ffaf00;
+}
+"""
 
 
-class CLIInterface:
-    def __init__(self, agent: Agent):
+class AURAHeader(Static):
+    def __init__(self) -> None:
+        super().__init__("", id="header")
+
+    def on_mount(self) -> None:
+        self._redraw()
+
+    def on_resize(self) -> None:
+        self._redraw()
+
+    def _redraw(self) -> None:
+        sd = self._stardate()
+        seg_red = "█████ "
+        seg_lcli = "L-CLI "
+        seg_ora = "████████████ "
+        seg_title = "AURA-CORE COMPUTER INTERFACE "
+        seg_blue = "████████████ "
+        seg_sd = f"SD {sd} "
+        fixed_len = sum(len(s) for s in [
+            seg_red, seg_lcli, seg_ora,
+            seg_title, seg_blue, seg_sd,
+        ])
+        fill = max(1, self.size.width - fixed_len) * "█"
+
+        bar = Text()
+        bar.append(seg_red, style="bold color(167)")
+        bar.append(seg_lcli, style=f"bold {_ORANGE}")
+        bar.append(seg_ora, style=f"bold {_ORANGE}")
+        bar.append(seg_title, style=f"bold {_TAN}")
+        bar.append(seg_blue, style=f"bold {_BLUE}")
+        bar.append(seg_sd, style=f"bold {_BLUE}")
+        bar.append(fill, style="bold color(183)")
+        self.update(bar)
+
+    @staticmethod
+    def _stardate() -> str:
+        d = date.today()
+        yday = d.timetuple().tm_yday
+        sd = (d.year - 1987) * 1000.0 + (yday / 365.25) * 1000
+        return f"{sd:.1f}"
+
+
+class CLIInterface(App):
+    CSS = _CSS
+
+    def __init__(self, agent: Agent) -> None:
+        super().__init__()
         self.agent = agent
-        self.handler = CLIHandler()
+        self.handler = CLIHandler(self._write_from_thread)
         self.agent.subscribe(self.handler.handle)
 
-    def run(self) -> None:
-        print("AURA-Core ready...")
+    def compose(self) -> ComposeResult:
+        yield AURAHeader()
+        yield RichLog(id="output", highlight=True, markup=False)
+        yield Input(
+            placeholder="QUERY ▶  type /help for commands",
+            id="input",
+        )
 
-        while True:
-            try:
-                # Read user input
-                user_input = input("\naura> ")
+    def on_mount(self) -> None:
+        self.query_one("#input", Input).focus()
+        log = self.query_one("#output", RichLog)
+        sub = Text()
+        sub.append("  SYSTEM ONLINE ", style=_ORANGE)
+        sub.append("▶ ", style=f"dim {_ORANGE}")
+        sub.append(
+            f"MODEL: {self.agent.llm.model}",
+            style=f"dim {_TAN}",
+        )
+        log.write(sub)
+        log.write(Text(""))
 
-                # Ignore empty input
-                if not user_input.strip():
-                    continue
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        user_input = event.value.strip()
+        self.query_one("#input", Input).clear()
 
-                # Handle slash commands before passing to agent
-                if user_input.startswith("/"):
-                    self._handle_command(user_input)
-                    continue
+        if not user_input:
+            return
 
-                # Pass user input to the agent
-                print("")
-                self.agent.run(user_input)
+        log = self.query_one("#output", RichLog)
+        echo = Text()
+        echo.append(" QUERY      ", style=f"bold {_ORANGE}")
+        echo.append("▶ ", style=_ORANGE)
+        echo.append(user_input, style=_TAN)
+        log.write(echo)
 
-            except KeyboardInterrupt:  # Handle Ctrl+C to stop the agent
-                print("\nBye!")
-                break
+        if user_input.startswith("/"):
+            self._handle_command(user_input)
+            return
 
-    # Handle CLI commands like /help, /reset, etc.
+        threading.Thread(
+            target=self.agent.run,
+            args=(user_input,),
+            daemon=True,
+        ).start()
+
+    def _write_from_thread(self, renderable) -> None:
+        log = self.query_one("#output", RichLog)
+        self.call_from_thread(log.write, renderable)
+
     def _handle_command(self, command: str) -> None:
-        match command.strip():
+        log = self.query_one("#output", RichLog)
+        parts = command.strip().split(maxsplit=1)
+        cmd = parts[0]
+        arg = parts[1] if len(parts) > 1 else ""
+
+        match cmd:
             case "/help":
-                print("""
-╭─────────────────────────────────╮
-│           AURA-Core             │
-├─────────────────────────────────┤
-│ Commands                        │
-│  /help     show this message    │
-│  /model    show or change model │
-│  /reset    clear context        │
-│  /clear    clear terminal       │
-│  /exit     quit                 │
-├─────────────────────────────────┤
-│ Tools                           │
-│  web_search   search the web    │
-╰─────────────────────────────────╯
-""")
+                self._print_help(log)
 
             case "/reset":
                 self.agent.context.clear_messages()
-                print("Context cleared.")
+                row = Text()
+                row.append(" MEMORY CORE ", style=f"bold {_ORANGE}")
+                row.append("▶ ", style=_ORANGE)
+                row.append("CONTEXT PURGED", style=_TAN)
+                log.write(row)
 
             case "/clear":
-                os.system('cls' if os.name == 'nt' else 'clear')
+                log.clear()
 
             case "/model":
-                print(f"Current model: {self.agent.llm.model}")
-                new_model = input(
-                    "Enter new model (or leave blank to keep current): "
-                ).strip()
-                if new_model:
-                    self.agent.llm.model = new_model
-                    print(f"Model updated to: {self.agent.llm.model}")
+                if arg:
+                    self.agent.llm.model = arg
+                    row = Text()
+                    row.append(
+                        " MATRIX UPDATED ",
+                        style=f"bold {_ORANGE}",
+                    )
+                    row.append("▶ ", style=_ORANGE)
+                    row.append(self.agent.llm.model, style=_TAN)
+                    log.write(row)
+                else:
+                    row = Text()
+                    row.append(
+                        " ACTIVE MATRIX  ",
+                        style=f"bold {_BLUE}",
+                    )
+                    row.append("▶ ", style=_BLUE)
+                    row.append(
+                        self.agent.llm.model,
+                        style=f"bold {_ORANGE}",
+                    )
+                    log.write(row)
 
             case "/exit":
-                raise KeyboardInterrupt
+                self.exit()
 
             case _:
-                print(f"Unknown command: {command}")
+                row = Text()
+                row.append(" UNKNOWN CMD   ", style=f"bold {_RED}")
+                row.append("▶ ", style=_RED)
+                row.append(command, style=_TAN)
+                log.write(row)
+
+    def _print_help(self, log: RichLog) -> None:
+        log.write(Rule(style=_ORANGE))
+        log.write(Text("  COMMANDS", style=f"bold {_ORANGE}"))
+        for cmd, desc in [
+            ("/help", "display command directory"),
+            ("/model <name>", "view or change active matrix"),
+            ("/reset", "purge memory core"),
+            ("/clear", "clear display"),
+            ("/exit", "terminate interface"),
+        ]:
+            row = Text(f"  {cmd:<20}", style=f"bold {_BLUE}")
+            row.append(f"  {desc}", style=f"dim {_TAN}")
+            log.write(row)
+        log.write(Text(""))
+        log.write(Text("  SUBROUTINES", style=f"bold {_ORANGE}"))
+        for tool, desc in [
+            ("web_search", "query the federation database network"),
+        ]:
+            row = Text(f"  {tool:<20}", style=f"bold {_BLUE}")
+            row.append(f"  {desc}", style=f"dim {_TAN}")
+            log.write(row)
+        log.write(Rule(style=_ORANGE))

@@ -1,5 +1,4 @@
-from typing import Callable
-
+from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.text import Text
@@ -14,18 +13,12 @@ _BLUE = "color(111)"
 _RED = "color(167)"
 _TAN = "color(223)"
 
+console = Console()
 
-class CLIHandler:
 
-    def __init__(self, write_fn: Callable) -> None:
-        self._write = write_fn
+class RichCLIHandler:
 
     def handle(self, event: Event) -> None:
-        renderable = self._build(event)
-        if renderable is not None:
-            self._write(renderable)
-
-    def _build(self, event: Event) -> "Text | Panel | None":
         match event:
             case ToolCallEvent():
                 args_str = ", ".join(
@@ -38,7 +31,7 @@ class CLIHandler:
                     f"{event.tool_name}({args_str})",
                     style=f"dim {_TAN}",
                 )
-                return row
+                console.print(row)
 
             case ObservationEvent():
                 raw = event.result
@@ -47,25 +40,23 @@ class CLIHandler:
                 row.append(" DATA RECV  ", style=f"bold {_BLUE}")
                 row.append("▶ ", style=_BLUE)
                 row.append(preview, style=f"dim {_TAN}")
-                return row
+                console.print(row)
 
             case FinalAnswerEvent():
-                title = (
-                    f"[bold {_TAN}]AURA RESPONSE[/bold {_TAN}]"
-                )
-                return Panel(
+                title = f"[bold {_TAN}]AURA RESPONSE[/bold {_TAN}]"
+                console.print()
+                console.print(Panel(
                     Markdown(event.content),
                     border_style=_ORANGE,
                     title=title,
                     title_align="left",
                     padding=(1, 2),
-                )
+                ))
 
             case ErrorEvent():
                 row = Text()
                 row.append(" ⚠  ALERT   ", style=f"bold {_RED}")
                 row.append("▶ ", style=_RED)
                 row.append(event.message, style=f"bold {_RED}")
-                return row
-
-        return None
+                console.print()
+                console.print(row)
