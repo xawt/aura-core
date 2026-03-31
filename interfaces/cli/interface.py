@@ -44,6 +44,7 @@ class CLIInterface:
 ├─────────────────────────────────┤
 │ Commands                        │
 │  /help     show this message    │
+│  /model    show or change model │
 │  /reset    clear context        │
 │  /clear    clear terminal       │
 │  /exit     quit                 │
@@ -59,6 +60,15 @@ class CLIInterface:
 
             case "/clear":
                 os.system('cls' if os.name == 'nt' else 'clear')
+
+            case "/model":
+                print(f"Current model: {self.agent.llm.model}")
+                new_model = input(
+                    "Enter new model (or leave blank to keep current): "
+                ).strip()
+                if new_model:
+                    self.agent.llm.model = new_model
+                    print(f"Model updated to: {self.agent.llm.model}")
 
             case "/exit":
                 raise KeyboardInterrupt
