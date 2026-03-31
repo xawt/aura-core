@@ -1,6 +1,11 @@
+import os
+
+from rich.console import Console
+
 from agent.agent import Agent
 from interfaces.cli.handler import CLIHandler
-import os
+
+console = Console()
 
 
 class CLIInterface:
@@ -10,68 +15,85 @@ class CLIInterface:
         self.agent.subscribe(self.handler.handle)
 
     def run(self) -> None:
-        print("AURA-Core ready...")
+        console.print()
+        console.print("  [bold white]◆ AURA[/bold white][dim]-Core[/dim]")
+        console.print(f"  [dim]Model: {self.agent.llm.model}[/dim]")
+        console.print("  [dim]Type /help for commands[/dim]")
+        console.print()
 
         while True:
             try:
-                # Read user input
-                user_input = input("\naura> ")
+                user_input = console.input("[bold green] >[/bold green] ")
 
-                # Ignore empty input
                 if not user_input.strip():
                     continue
 
-                # Handle slash commands before passing to agent
                 if user_input.startswith("/"):
                     self._handle_command(user_input)
                     continue
 
-                # Pass user input to the agent
-                print("")
+                console.print()
                 self.agent.run(user_input)
+                console.print()
 
-            except KeyboardInterrupt:  # Handle Ctrl+C to stop the agent
-                print("\nBye!")
+            except KeyboardInterrupt:
+                console.print()
+                console.print("  [dim]Bye![/dim]")
+                console.print()
                 break
 
-    # Handle CLI commands like /help, /reset, etc.
     def _handle_command(self, command: str) -> None:
         match command.strip():
             case "/help":
-                print("""
-╭─────────────────────────────────╮
-│           AURA-Core             │
-├─────────────────────────────────┤
-│ Commands                        │
-│  /help     show this message    │
-│  /model    show or change model │
-│  /reset    clear context        │
-│  /clear    clear terminal       │
-│  /exit     quit                 │
-├─────────────────────────────────┤
-│ Tools                           │
-│  web_search   search the web    │
-╰─────────────────────────────────╯
-""")
+                self._print_help()
 
             case "/reset":
                 self.agent.context.clear_messages()
-                print("Context cleared.")
+                console.print("  [dim]Context cleared.[/dim]")
 
             case "/clear":
                 os.system('cls' if os.name == 'nt' else 'clear')
 
             case "/model":
-                print(f"Current model: {self.agent.llm.model}")
-                new_model = input(
-                    "Enter new model (or leave blank to keep current): "
+                console.print(
+                    f"  Current model: [bold]{self.agent.llm.model}[/bold]"
+                )
+                new_model = console.input(
+                    "  [dim]New model (blank to keep):[/dim] "
                 ).strip()
                 if new_model:
                     self.agent.llm.model = new_model
-                    print(f"Model updated to: {self.agent.llm.model}")
+                    console.print(
+                        f"  [dim]Switched to[/dim]"
+                        f" [bold]{self.agent.llm.model}[/bold]"
+                    )
 
             case "/exit":
                 raise KeyboardInterrupt
 
             case _:
-                print(f"Unknown command: {command}")
+                console.print(f"  [yellow]Unknown command:[/yellow] {command}")
+
+    def _print_help(self) -> None:
+        console.print()
+        console.print("  [bold]Commands[/bold]")
+        for cmd, desc in [
+            ("/help",  "show this message"),
+            ("/model", "show or change model"),
+            ("/reset", "clear context"),
+            ("/clear", "clear terminal"),
+            ("/exit",  "quit"),
+        ]:
+            console.print(
+                f"  [bold cyan]{cmd:<10}[/bold cyan]  [dim]{desc}[/dim]"
+            )
+
+        console.print()
+        console.print("  [bold]Tools[/bold]")
+        for tool, desc in [
+            ("web_search", "search the web"),
+        ]:
+            console.print(
+                f"  [bold cyan]{tool:<12}[/bold cyan]  [dim]{desc}[/dim]"
+            )
+        console.print()

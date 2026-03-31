@@ -1,18 +1,32 @@
+from rich.console import Console
+from rich.markdown import Markdown
+
 from agent.events import (
     Event, ToolCallEvent, ObservationEvent, FinalAnswerEvent, ErrorEvent
 )
 
+console = Console()
+
 
 class CLIHandler:
 
-    # Catch all LLM events and print them to the console.
     def handle(self, event: Event) -> None:
         match event:
             case ToolCallEvent():
-                print(f"🔧 {event.tool_name}({event.args})")
+                args_str = ", ".join(
+                    f'{k}="{v}"' for k, v in event.args.items()
+                )
+                console.print(
+                    f"  [dim]⏺ {event.tool_name}({args_str})[/dim]"
+                )
             case ObservationEvent():
-                print(f"👁  {event.tool_name} → {event.result[:100]}...")
+                raw = event.result
+                preview = raw[:200] + "…" if len(raw) > 200 else raw
+                console.print(f"  [dim]  ↳ {preview}[/dim]")
             case FinalAnswerEvent():
-                print(f"\n{event.content}")
+                console.print()
+                console.print(Markdown(event.content))
             case ErrorEvent():
-                print(f"❌ {event.message}")
+                console.print(
+                    f"\n  [bold red]✗[/bold red] [red]{event.message}[/red]"
+                )
