@@ -1,5 +1,6 @@
 from typing import Callable
 
+from rich.console import Group
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.text import Text
@@ -60,9 +61,7 @@ class CLIHandler:
                     title_align="left",
                     padding=(1, 2),
                 )
-                self._write(panel)
-                self._write(Text(""))
-                return None
+                return Group(panel, Text(""))
 
             case ErrorEvent():
                 row = Text()
