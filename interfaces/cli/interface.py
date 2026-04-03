@@ -3,7 +3,7 @@ from datetime import date
 
 from textual.app import App, ComposeResult
 from textual.containers import Vertical
-from textual.widgets import Input, RichLog, Static
+from textual.widgets import RichLog, Static, TextArea
 
 from rich.rule import Rule
 from rich.text import Text
@@ -47,8 +47,12 @@ Screen {
     color: #ffd7af;
     height: 3;
 }
-Input:focus {
+#input:focus {
     border: solid #ffaf00;
+}
+#input .text-area--cursor {
+    background: #ffaf00;
+    color: #0a0a0a;
 }
 """
 
@@ -118,8 +122,22 @@ class ModelBar(Static):
         self.update(bar)
 
 
+class QueryInput(TextArea):
+    def on_key(self, event) -> None:
+        if event.key == "enter":
+            event.prevent_default()
+            event.stop()
+            self.app.action_submit()
+        elif event.key == "ctrl+n":
+            event.prevent_default()
+            event.stop()
+            self.insert("\n")
+            self.scroll_cursor_visible()
+
+
 class CLIInterface(App):
     CSS = _CSS
+    BINDINGS = []
 
     def __init__(self, agent: Agent) -> None:
         super().__init__()
@@ -132,17 +150,21 @@ class CLIInterface(App):
             yield AURAHeader()
             yield ModelBar(self.agent.llm.model)
         yield RichLog(id="output", highlight=True, markup=False)
-        yield Input(
-            placeholder="QUERY ▶  type /help for commands",
-            id="input",
-        )
+        yield QueryInput(id="input", tab_behavior="focus")
 
     def on_mount(self) -> None:
-        self.query_one("#input", Input).focus()
+        self.query_one("#input", QueryInput).focus()
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        user_input = event.value.strip()
-        self.query_one("#input", Input).clear()
+    def on_text_area_changed(self, event: TextArea.Changed) -> None:
+        ta = event.text_area
+        lines = ta.text.count("\n") + 1
+        ta.styles.height = min(max(lines + 2, 3), 9)
+
+    def action_submit(self) -> None:
+        ta = self.query_one("#input", QueryInput)
+        user_input = ta.text.strip()
+        ta.load_text("")
+        ta.styles.height = 3
 
         if not user_input:
             return
@@ -228,7 +250,7 @@ class CLIInterface(App):
         log.write(Rule(style=_ORANGE))
         log.write(Text("  COMMANDS", style=f"bold {_ORANGE}"))
         for cmd, desc in [
-            ("/help", "display command directory"),
+            ("/help", "display command directory  [Enter=send  Ctrl+N=newline]"),
             ("/model <name>", "view or change active matrix"),
             ("/reset", "purge memory core"),
             ("/clear", "clear display"),
