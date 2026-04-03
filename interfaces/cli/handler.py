@@ -53,13 +53,16 @@ class CLIHandler:
                 title = (
                     f"[bold {_TAN}]AURA RESPONSE[/bold {_TAN}]"
                 )
-                return Panel(
+                panel = Panel(
                     Markdown(event.content),
                     border_style=_ORANGE,
                     title=title,
                     title_align="left",
                     padding=(1, 2),
                 )
+                self._write(panel)
+                self._write(Text(""))
+                return None
 
             case ErrorEvent():
                 row = Text()
