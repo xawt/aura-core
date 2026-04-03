@@ -2,7 +2,8 @@ import threading
 from datetime import date
 
 from textual.app import App, ComposeResult
-from textual.widgets import Input, RichLog, Static
+from textual.containers import Vertical
+from textual.widgets import RichLog, Static, TextArea
 
 from rich.rule import Rule
 from rich.text import Text
@@ -20,10 +21,18 @@ _CSS = """
 Screen {
     background: #0a0a0a;
 }
+#top {
+    height: 4;
+    dock: top;
+}
 #header {
     height: 2;
-    dock: top;
     border-bottom: solid #ffaf00;
+}
+#modelbar {
+    height: 2;
+    background: #111111;
+    padding-bottom: 1;
 }
 #output {
     background: #0a0a0a;
@@ -38,8 +47,12 @@ Screen {
     color: #ffd7af;
     height: 3;
 }
-Input:focus {
+#input:focus {
     border: solid #ffaf00;
+}
+#input .text-area--cursor {
+    background: #ffaf00;
+    color: #0a0a0a;
 }
 """
 
@@ -86,8 +99,45 @@ class AURAHeader(Static):
         return f"{sd:.1f}"
 
 
+class ModelBar(Static):
+    def __init__(self, model: str) -> None:
+        super().__init__("", id="modelbar")
+        self._model = model
+
+    def on_mount(self) -> None:
+        self._redraw()
+
+    def on_resize(self) -> None:
+        self._redraw()
+
+    def set_model(self, model: str) -> None:
+        self._model = model
+        self._redraw()
+
+    def _redraw(self) -> None:
+        bar = Text()
+        bar.append(" SYSTEM ONLINE ", style=f"bold {_BLUE}")
+        bar.append("▶ ", style=_BLUE)
+        bar.append(self._model, style=f"bold {_TAN}")
+        self.update(bar)
+
+
+class QueryInput(TextArea):
+    def on_key(self, event) -> None:
+        if event.key == "enter":
+            event.prevent_default()
+            event.stop()
+            self.app.action_submit()
+        elif event.key == "ctrl+n":
+            event.prevent_default()
+            event.stop()
+            self.insert("\n")
+            self.scroll_cursor_visible()
+
+
 class CLIInterface(App):
     CSS = _CSS
+    BINDINGS = []
 
     def __init__(self, agent: Agent) -> None:
         super().__init__()
@@ -96,29 +146,25 @@ class CLIInterface(App):
         self.agent.subscribe(self.handler.handle)
 
     def compose(self) -> ComposeResult:
-        yield AURAHeader()
+        with Vertical(id="top"):
+            yield AURAHeader()
+            yield ModelBar(self.agent.llm.model)
         yield RichLog(id="output", highlight=True, markup=False)
-        yield Input(
-            placeholder="QUERY ▶  type /help for commands",
-            id="input",
-        )
+        yield QueryInput(id="input", tab_behavior="focus")
 
     def on_mount(self) -> None:
-        self.query_one("#input", Input).focus()
-        log = self.query_one("#output", RichLog)
-        sub = Text()
-        sub.append("  SYSTEM ONLINE ", style=_ORANGE)
-        sub.append("▶ ", style=f"dim {_ORANGE}")
-        sub.append(
-            f"MODEL: {self.agent.llm.model}",
-            style=f"dim {_TAN}",
-        )
-        log.write(sub)
-        log.write(Text(""))
+        self.query_one("#input", QueryInput).focus()
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        user_input = event.value.strip()
-        self.query_one("#input", Input).clear()
+    def on_text_area_changed(self, event: TextArea.Changed) -> None:
+        ta = event.text_area
+        lines = ta.text.count("\n") + 1
+        ta.styles.height = min(max(lines + 2, 3), 9)
+
+    def action_submit(self) -> None:
+        ta = self.query_one("#input", QueryInput)
+        user_input = ta.text.strip()
+        ta.load_text("")
+        ta.styles.height = 3
 
         if not user_input:
             return
@@ -168,6 +214,7 @@ class CLIInterface(App):
             case "/model":
                 if arg:
                     self.agent.llm.model = arg
+                    self.query_one("#modelbar", ModelBar).set_model(arg)
                     row = Text()
                     row.append(
                         " MATRIX UPDATED ",
@@ -203,7 +250,7 @@ class CLIInterface(App):
         log.write(Rule(style=_ORANGE))
         log.write(Text("  COMMANDS", style=f"bold {_ORANGE}"))
         for cmd, desc in [
-            ("/help", "display command directory"),
+            ("/help", "display command directory  [Enter=send  Ctrl+N=newline]"),
             ("/model <name>", "view or change active matrix"),
             ("/reset", "purge memory core"),
             ("/clear", "clear display"),

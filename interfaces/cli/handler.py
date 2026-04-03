@@ -1,5 +1,6 @@
 from typing import Callable
 
+from rich.console import Group
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.text import Text
@@ -53,13 +54,14 @@ class CLIHandler:
                 title = (
                     f"[bold {_TAN}]AURA RESPONSE[/bold {_TAN}]"
                 )
-                return Panel(
+                panel = Panel(
                     Markdown(event.content),
                     border_style=_ORANGE,
                     title=title,
                     title_align="left",
                     padding=(1, 2),
                 )
+                return Group(panel, Text(""))
 
             case ErrorEvent():
                 row = Text()
