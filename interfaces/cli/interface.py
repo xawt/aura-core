@@ -2,6 +2,7 @@ import threading
 from datetime import date
 
 from textual.app import App, ComposeResult
+from textual.containers import Vertical
 from textual.widgets import Input, RichLog, Static
 
 from rich.rule import Rule
@@ -20,10 +21,18 @@ _CSS = """
 Screen {
     background: #0a0a0a;
 }
+#top {
+    height: 4;
+    dock: top;
+}
 #header {
     height: 2;
-    dock: top;
     border-bottom: solid #ffaf00;
+}
+#modelbar {
+    height: 2;
+    background: #111111;
+    padding-bottom: 1;
 }
 #output {
     background: #0a0a0a;
@@ -86,6 +95,29 @@ class AURAHeader(Static):
         return f"{sd:.1f}"
 
 
+class ModelBar(Static):
+    def __init__(self, model: str) -> None:
+        super().__init__("", id="modelbar")
+        self._model = model
+
+    def on_mount(self) -> None:
+        self._redraw()
+
+    def on_resize(self) -> None:
+        self._redraw()
+
+    def set_model(self, model: str) -> None:
+        self._model = model
+        self._redraw()
+
+    def _redraw(self) -> None:
+        bar = Text()
+        bar.append(" SYSTEM ONLINE ", style=f"bold {_BLUE}")
+        bar.append("▶ ", style=_BLUE)
+        bar.append(self._model, style=f"bold {_TAN}")
+        self.update(bar)
+
+
 class CLIInterface(App):
     CSS = _CSS
 
@@ -96,7 +128,9 @@ class CLIInterface(App):
         self.agent.subscribe(self.handler.handle)
 
     def compose(self) -> ComposeResult:
-        yield AURAHeader()
+        with Vertical(id="top"):
+            yield AURAHeader()
+            yield ModelBar(self.agent.llm.model)
         yield RichLog(id="output", highlight=True, markup=False)
         yield Input(
             placeholder="QUERY ▶  type /help for commands",
@@ -105,16 +139,6 @@ class CLIInterface(App):
 
     def on_mount(self) -> None:
         self.query_one("#input", Input).focus()
-        log = self.query_one("#output", RichLog)
-        sub = Text()
-        sub.append("  SYSTEM ONLINE ", style=_ORANGE)
-        sub.append("▶ ", style=f"dim {_ORANGE}")
-        sub.append(
-            f"MODEL: {self.agent.llm.model}",
-            style=f"dim {_TAN}",
-        )
-        log.write(sub)
-        log.write(Text(""))
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         user_input = event.value.strip()
@@ -168,6 +192,7 @@ class CLIInterface(App):
             case "/model":
                 if arg:
                     self.agent.llm.model = arg
+                    self.query_one("#modelbar", ModelBar).set_model(arg)
                     row = Text()
                     row.append(
                         " MATRIX UPDATED ",
