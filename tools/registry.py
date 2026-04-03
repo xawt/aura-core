@@ -50,3 +50,7 @@ class ToolRegistry:
     # Return the names of all registered tools.
     def get_all_names(self) -> list[str]:
         return list(self._tools.keys())
+
+    # Remove all registered tools.
+    def clear(self) -> None:
+        self._tools.clear()

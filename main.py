@@ -1,20 +1,15 @@
 import argparse
+from pathlib import Path
 
 from agent.agent import Agent
-from tools.registry import ToolRegistry, Tool
-import tools.builtin.web_search
+from tools.scanner import sync_and_build
+
+_PROJECT_ROOT = Path(__file__).parent
 
 
 def build_agent() -> Agent:
-    tool_registry = ToolRegistry()
-    web_search_tool = Tool(
-        name=tools.builtin.web_search.NAME,
-        description=tools.builtin.web_search.DESCRIPTION,
-        params=tools.builtin.web_search.SCHEMA,
-        fn=tools.builtin.web_search.web_search
-    )
-    tool_registry.register(web_search_tool)
-    return Agent(tool_registry=tool_registry)
+    registry = sync_and_build(project_root=_PROJECT_ROOT)
+    return Agent(tool_registry=registry)
 
 
 def main():

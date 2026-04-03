@@ -90,7 +90,11 @@ class RichCLIInterface:
         return f"{sd:.1f}"
 
     def _handle_command(self, command: str) -> None:
-        match command.strip():
+        parts = command.strip().split(maxsplit=1)
+        cmd = parts[0]
+        arg = parts[1] if len(parts) > 1 else ""
+
+        match cmd:
             case "/help":
                 self._print_help()
 
@@ -106,27 +110,35 @@ class RichCLIInterface:
                 os.system('cls' if os.name == 'nt' else 'clear')
 
             case "/model":
-                row = Text()
-                row.append(" ACTIVE MATRIX ", style=f"bold {_BLUE}")
-                row.append("▶ ", style=_BLUE)
-                row.append(
-                    self.agent.llm.model,
-                    style=f"bold {_ORANGE}",
-                )
-                console.print(row)
-                new_model = console.input(
-                    f"[{_BLUE}] NEW MATRIX ID ▶[/{_BLUE}]  "
-                ).strip()
-                if new_model:
-                    self.agent.llm.model = new_model
+                if arg:
+                    self.agent.llm.model = arg
                     updated = Text()
-                    updated.append(
-                        " MATRIX UPDATED ",
-                        style=f"bold {_ORANGE}",
-                    )
+                    updated.append(" MATRIX UPDATED ", style=f"bold {_ORANGE}")
                     updated.append("▶ ", style=_ORANGE)
                     updated.append(self.agent.llm.model, style=_TAN)
                     console.print(updated)
+                else:
+                    row = Text()
+                    row.append(" ACTIVE MATRIX ", style=f"bold {_BLUE}")
+                    row.append("▶ ", style=_BLUE)
+                    row.append(self.agent.llm.model, style=f"bold {_ORANGE}")
+                    console.print(row)
+                    new_model = console.input(
+                        f"[{_BLUE}] NEW MATRIX ID ▶[/{_BLUE}]  "
+                    ).strip()
+                    if new_model:
+                        self.agent.llm.model = new_model
+                        updated = Text()
+                        updated.append(
+                            " MATRIX UPDATED ",
+                            style=f"bold {_ORANGE}",
+                        )
+                        updated.append("▶ ", style=_ORANGE)
+                        updated.append(self.agent.llm.model, style=_TAN)
+                        console.print(updated)
+
+            case "/tools":
+                self._handle_tools_command(arg)
 
             case "/exit":
                 raise KeyboardInterrupt
@@ -138,7 +150,60 @@ class RichCLIInterface:
                 row.append(command, style=_TAN)
                 console.print(row)
 
+    def _handle_tools_command(self, arg: str) -> None:
+        from tools import scanner
+        parts = arg.strip().split(maxsplit=1)
+        sub = parts[0].lower() if parts and parts[0] else ""
+
+        if sub in ("on", "off"):
+            name = parts[1].strip() if len(parts) > 1 else ""
+            if not name:
+                row = Text()
+                row.append(" TOOL CTRL     ", style=f"bold {_RED}")
+                row.append("▶ ", style=_RED)
+                row.append("Usage: /tools on|off <name>", style=_TAN)
+                console.print(row)
+                return
+            enabled = sub == "on"
+            found = scanner.set_tool_enabled(name, enabled)
+            if found:
+                from main import _PROJECT_ROOT
+                self.agent.tool_registry = scanner.sync_and_build(
+                    project_root=_PROJECT_ROOT
+                )
+                label = "ENABLED " if enabled else "DISABLED"
+                row = Text()
+                row.append(f" TOOL {label} ", style=f"bold {_ORANGE}")
+                row.append("▶ ", style=_ORANGE)
+                row.append(name, style=_TAN)
+                console.print(row)
+            else:
+                row = Text()
+                row.append(" TOOL CTRL     ", style=f"bold {_RED}")
+                row.append("▶ ", style=_RED)
+                row.append(f"Unknown tool: {name}", style=_TAN)
+                console.print(row)
+        else:
+            # List all tools
+            tools = scanner.list_tools()
+            console.rule(style=_ORANGE)
+            console.print(Text("  SUBROUTINES", style=f"bold {_ORANGE}"))
+            if not tools:
+                console.print(Text("  (none found)", style=f"dim {_TAN}"))
+            for t in tools:
+                tag = "[ON] " if t["enabled"] else "[OFF]"
+                style = f"bold {_BLUE}" if t["enabled"] else f"bold {_RED}"
+                row = Text(f"  {tag} {t['name']:<18}", style=style)
+                row.append(f"  {t['module']}", style=f"dim {_TAN}")
+                console.print(row)
+            console.print(Text(
+                "  /tools on|off <name>  to toggle",
+                style=f"dim {_TAN}",
+            ))
+            console.rule(style=_ORANGE)
+
     def _print_help(self) -> None:
+        from tools import scanner
         console.print()
         title = (
             f"[bold {_ORANGE}]AURA COMMAND DIRECTORY"
@@ -149,23 +214,24 @@ class RichCLIInterface:
 
         console.print(Text("  COMMANDS", style=f"bold {_ORANGE}"))
         for cmd, desc in [
-            ("/help",  "display command directory"),
-            ("/model", "view or change active matrix"),
-            ("/reset", "purge memory core"),
-            ("/clear", "clear display"),
-            ("/exit",  "terminate interface"),
+            ("/help",                    "display command directory"),
+            ("/model [<name>]",          "view or change active matrix"),
+            ("/tools [on|off <name>]",   "list or toggle subroutines"),
+            ("/reset",                   "purge memory core"),
+            ("/clear",                   "clear display"),
+            ("/exit",                    "terminate interface"),
         ]:
-            row = Text(f"  {cmd:<12}", style=f"bold {_BLUE}")
+            row = Text(f"  {cmd:<28}", style=f"bold {_BLUE}")
             row.append(f"  {desc}", style=f"dim {_TAN}")
             console.print(row)
 
         console.print()
         console.print(Text("  SUBROUTINES", style=f"bold {_ORANGE}"))
-        for tool, desc in [
-            ("web_search", "query the federation database network"),
-        ]:
-            row = Text(f"  {tool:<14}", style=f"bold {_BLUE}")
-            row.append(f"  {desc}", style=f"dim {_TAN}")
+        for t in scanner.list_tools():
+            tag = "[ON] " if t["enabled"] else "[OFF]"
+            style = f"bold {_BLUE}" if t["enabled"] else f"bold {_RED}"
+            row = Text(f"  {tag} {t['name']:<18}", style=style)
+            row.append(f"  {t['module']}", style=f"dim {_TAN}")
             console.print(row)
 
         console.print()

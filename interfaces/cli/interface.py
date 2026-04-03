@@ -236,6 +236,9 @@ class CLIInterface(App):
                     )
                     log.write(row)
 
+            case "/tools":
+                self._handle_tools_command(arg, log)
+
             case "/exit":
                 self.exit()
 
@@ -246,25 +249,80 @@ class CLIInterface(App):
                 row.append(command, style=_TAN)
                 log.write(row)
 
+    def _handle_tools_command(self, arg: str, log: RichLog) -> None:
+        from tools import scanner
+        parts = arg.strip().split(maxsplit=1)
+        sub = parts[0].lower() if parts and parts[0] else ""
+
+        if sub in ("on", "off"):
+            name = parts[1].strip() if len(parts) > 1 else ""
+            if not name:
+                row = Text()
+                row.append(" TOOL CTRL     ", style=f"bold {_RED}")
+                row.append("▶ ", style=_RED)
+                row.append("Usage: /tools on|off <name>", style=_TAN)
+                log.write(row)
+                return
+            enabled = sub == "on"
+            found = scanner.set_tool_enabled(name, enabled)
+            if found:
+                from main import _PROJECT_ROOT
+                self.agent.tool_registry = scanner.sync_and_build(
+                    project_root=_PROJECT_ROOT
+                )
+                label = "ENABLED " if enabled else "DISABLED"
+                row = Text()
+                row.append(f" TOOL {label} ", style=f"bold {_ORANGE}")
+                row.append("▶ ", style=_ORANGE)
+                row.append(name, style=_TAN)
+                log.write(row)
+            else:
+                row = Text()
+                row.append(" TOOL CTRL     ", style=f"bold {_RED}")
+                row.append("▶ ", style=_RED)
+                row.append(f"Unknown tool: {name}", style=_TAN)
+                log.write(row)
+        else:
+            # List all tools
+            tools = scanner.list_tools()
+            log.write(Rule(style=_ORANGE))
+            log.write(Text("  SUBROUTINES", style=f"bold {_ORANGE}"))
+            if not tools:
+                row = Text("  (none found)", style=f"dim {_TAN}")
+                log.write(row)
+            for t in tools:
+                tag = "[ON] " if t["enabled"] else "[OFF]"
+                style = f"bold {_BLUE}" if t["enabled"] else f"bold {_RED}"
+                row = Text(f"  {tag} {t['name']:<18}", style=style)
+                row.append(f"  {t['module']}", style=f"dim {_TAN}")
+                log.write(row)
+            log.write(Text(
+                "  /tools on|off <name>  to toggle",
+                style=f"dim {_TAN}",
+            ))
+            log.write(Rule(style=_ORANGE))
+
     def _print_help(self, log: RichLog) -> None:
+        from tools import scanner
         log.write(Rule(style=_ORANGE))
         log.write(Text("  COMMANDS", style=f"bold {_ORANGE}"))
         for cmd, desc in [
-            ("/help", "display command directory  [Enter=send  Ctrl+N=newline]"),
+            ("/help", "display commands  [Enter=send  Ctrl+N=newline]"),
             ("/model <name>", "view or change active matrix"),
+            ("/tools [on|off <name>]", "list or toggle subroutines"),
             ("/reset", "purge memory core"),
             ("/clear", "clear display"),
             ("/exit", "terminate interface"),
         ]:
-            row = Text(f"  {cmd:<20}", style=f"bold {_BLUE}")
+            row = Text(f"  {cmd:<26}", style=f"bold {_BLUE}")
             row.append(f"  {desc}", style=f"dim {_TAN}")
             log.write(row)
         log.write(Text(""))
         log.write(Text("  SUBROUTINES", style=f"bold {_ORANGE}"))
-        for tool, desc in [
-            ("web_search", "query the federation database network"),
-        ]:
-            row = Text(f"  {tool:<20}", style=f"bold {_BLUE}")
-            row.append(f"  {desc}", style=f"dim {_TAN}")
+        for t in scanner.list_tools():
+            tag = "[ON] " if t["enabled"] else "[OFF]"
+            style = f"bold {_BLUE}" if t["enabled"] else f"bold {_RED}"
+            row = Text(f"  {tag} {t['name']:<18}", style=style)
+            row.append(f"  {t['module']}", style=f"dim {_TAN}")
             log.write(row)
         log.write(Rule(style=_ORANGE))
