@@ -1,0 +1,6 @@
+scan_paths:
+- tools/builtin
+tools:
+  web_search:
+    module: tools.builtin.web_search
+    enabled: true

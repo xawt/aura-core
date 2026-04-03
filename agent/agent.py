@@ -1,16 +1,19 @@
+import json
+from pathlib import Path
+
 from agent.context import Context
 from agent.events import EventBus, FinalAnswerEvent, ToolCallEvent
 from agent.llm import LLMClient
 from tools.registry import ToolRegistry
-import json
 
 
 class Agent:
-    def __init__(self, tool_registry: ToolRegistry):
+    def __init__(self, tool_registry: ToolRegistry, project_root: Path | None = None):
         self.context = Context()
         self.bus = EventBus()
         self.llm = LLMClient()
         self.tool_registry = tool_registry
+        self.project_root = project_root
         # add system prompt
         self.context.add_message(
             "system",
@@ -24,12 +27,13 @@ class Agent:
 
     def run(self, user_input: str) -> None:
         self.context.add_message("user", user_input)
+        registry = self.tool_registry  # snapshot so a concurrent /tools toggle can't race mid-run
 
         while True:
 
             message = self.llm.complete(
                 self.context.get_messages(),
-                tools=self.tool_registry.get_all_schemas()
+                tools=registry.get_all_schemas()
             )
             if message.tool_calls:
                 # 1. Store the tool call message in the context
@@ -40,7 +44,7 @@ class Agent:
                     name = tool_call.function.name
                     args = json.loads(tool_call.function.arguments)
 
-                    tool = self.tool_registry[name]
+                    tool = registry[name]
 
                     self.bus.emit(ToolCallEvent(tool_name=name, args=args))
                     result = tool.fn(**args)
