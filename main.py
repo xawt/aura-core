@@ -9,7 +9,7 @@ _PROJECT_ROOT = Path(__file__).parent
 
 def build_agent() -> Agent:
     registry = sync_and_build(project_root=_PROJECT_ROOT)
-    return Agent(tool_registry=registry)
+    return Agent(tool_registry=registry, project_root=_PROJECT_ROOT)
 
 
 def main():

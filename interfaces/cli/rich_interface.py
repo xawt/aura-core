@@ -165,11 +165,10 @@ class RichCLIInterface:
                 console.print(row)
                 return
             enabled = sub == "on"
-            found = scanner.set_tool_enabled(name, enabled)
+            found = scanner.set_tool_enabled(name, enabled, project_root=self.agent.project_root)
             if found:
-                from main import _PROJECT_ROOT
                 self.agent.tool_registry = scanner.sync_and_build(
-                    project_root=_PROJECT_ROOT
+                    project_root=self.agent.project_root
                 )
                 label = "ENABLED " if enabled else "DISABLED"
                 row = Text()
@@ -185,7 +184,7 @@ class RichCLIInterface:
                 console.print(row)
         else:
             # List all tools
-            tools = scanner.list_tools()
+            tools = scanner.list_tools(project_root=self.agent.project_root)
             console.rule(style=_ORANGE)
             console.print(Text("  SUBROUTINES", style=f"bold {_ORANGE}"))
             if not tools:
@@ -227,7 +226,7 @@ class RichCLIInterface:
 
         console.print()
         console.print(Text("  SUBROUTINES", style=f"bold {_ORANGE}"))
-        for t in scanner.list_tools():
+        for t in scanner.list_tools(project_root=self.agent.project_root):
             tag = "[ON] " if t["enabled"] else "[OFF]"
             style = f"bold {_BLUE}" if t["enabled"] else f"bold {_RED}"
             row = Text(f"  {tag} {t['name']:<18}", style=style)

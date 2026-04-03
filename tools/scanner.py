@@ -10,28 +10,50 @@ Convention: a tool module must expose:
 """
 import importlib.util
 import sys
+import warnings
 from pathlib import Path
 
 import yaml
 
 from tools.registry import Tool, ToolRegistry
 
-_CONFIG_PATH = Path("config/tools.yaml")
+_CONFIG_RELATIVE_PATH = Path("config/tools.yaml")
 _DEFAULT_SCAN_PATHS = ["tools/builtin"]
 
 
 # ── Config I/O ─────────────────────────────────────────────────────────────
 
-def _load_config() -> dict:
-    if not _CONFIG_PATH.exists():
-        return {"scan_paths": list(_DEFAULT_SCAN_PATHS), "tools": {}}
-    raw = yaml.safe_load(_CONFIG_PATH.read_text(encoding="utf-8"))
-    return raw if raw else {}
+def _get_config_path(project_root: Path | None = None) -> Path:
+    root = project_root or Path.cwd()
+    return root / _CONFIG_RELATIVE_PATH
 
 
-def _save_config(config: dict) -> None:
-    _CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _CONFIG_PATH.write_text(
+def _default_config() -> dict:
+    return {"scan_paths": list(_DEFAULT_SCAN_PATHS), "tools": {}}
+
+
+def _load_config(project_root: Path | None = None) -> dict:
+    default = _default_config()
+    config_path = _get_config_path(project_root)
+    if not config_path.exists():
+        return default
+
+    raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        return default
+
+    config = {**default, **raw}
+    if not isinstance(config.get("scan_paths"), list):
+        config["scan_paths"] = list(_DEFAULT_SCAN_PATHS)
+    if not isinstance(config.get("tools"), dict):
+        config["tools"] = {}
+    return config
+
+
+def _save_config(config: dict, project_root: Path | None = None) -> None:
+    config_path = _get_config_path(project_root)
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(
         yaml.dump(
             config,
             default_flow_style=False,
@@ -79,7 +101,8 @@ def _scan_directory(directory: Path, root: Path) -> list[_DiscoveredTool]:
                 mod = importlib.util.module_from_spec(spec)
                 sys.modules[mod_path] = mod
                 spec.loader.exec_module(mod)
-        except Exception:
+        except Exception as exc:
+            warnings.warn(f"Failed to import tool module '{file}': {exc}", stacklevel=2)
             continue
 
         name = getattr(mod, "NAME", None)
@@ -105,7 +128,7 @@ def sync_and_build(project_root: Path | None = None) -> ToolRegistry:
     Creates config/tools.yaml automatically on first run.
     """
     root = project_root or Path.cwd()
-    config = _load_config()
+    config = _load_config(root)
     scan_paths: list[str] = config.get("scan_paths", list(_DEFAULT_SCAN_PATHS))
     tools_cfg: dict = config.get("tools", {})
 
@@ -126,8 +149,9 @@ def sync_and_build(project_root: Path | None = None) -> ToolRegistry:
         else:
             tools_cfg[name]["module"] = dt.module_path
 
+    config["scan_paths"] = scan_paths
     config["tools"] = tools_cfg
-    _save_config(config)
+    _save_config(config, root)
 
     # Build registry with enabled tools only
     registry = ToolRegistry()
@@ -144,12 +168,12 @@ def sync_and_build(project_root: Path | None = None) -> ToolRegistry:
     return registry
 
 
-def list_tools() -> list[dict]:
+def list_tools(project_root: Path | None = None) -> list[dict]:
     """
     Return all known tools (enabled and disabled) from config/tools.yaml.
     Each entry: {"name": str, "enabled": bool, "module": str}.
     """
-    config = _load_config()
+    config = _load_config(project_root)
     return [
         {
             "name": name,
@@ -160,17 +184,17 @@ def list_tools() -> list[dict]:
     ]
 
 
-def set_tool_enabled(name: str, enabled: bool) -> bool:
+def set_tool_enabled(name: str, enabled: bool, project_root: Path | None = None) -> bool:
     """
     Enable or disable a named tool in config/tools.yaml.
     Returns True if the tool was found, False otherwise.
     Call sync_and_build() afterwards to apply the change to a live registry.
     """
-    config = _load_config()
+    config = _load_config(project_root)
     tools_cfg = config.get("tools", {})
     if name not in tools_cfg:
         return False
     tools_cfg[name]["enabled"] = enabled
     config["tools"] = tools_cfg
-    _save_config(config)
+    _save_config(config, project_root)
     return True
